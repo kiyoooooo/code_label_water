@@ -30,9 +30,30 @@ public:
     uint32_t angle_pair[2][3];
     uint32_t angle_type[2];
     uint32_t nangle = 0;
+    //ベシクル内の水かどうかwater1,2
+    bool vesicle_water1 = false;
+    bool vesicle_water2 = false;
 
     //sortを利用するために定義
     bool operator<(const ParticleInfo &another) const
+    {
+        //メンバ変数であるnum1で比較した結果を
+        //この構造体の比較とする
+        return id < another.id;
+    }
+};
+
+class LipidInfo
+{
+public:
+    uint32_t id;
+    uint32_t type;
+    /*position*/
+    double posx;
+    double posy;
+    double posz;
+    //sortを利用するために定義
+    bool operator<(const LipidInfo &another) const
     {
         //メンバ変数であるnum1で比較した結果を
         //この構造体の比較とする
@@ -59,7 +80,9 @@ public:
 int main(int argc, char *argv[])
 {
     std::vector<ParticleInfo> before_pinfo, after_pinfo;
+    std::vector<LipidInfo> lipidinfo1, lipidinfo2;
     ParticleInfo temp_info;
+    LipidInfo temp_lipidinfo;
     //------------------------------------------------------//
     //
     //
@@ -86,6 +109,20 @@ int main(int argc, char *argv[])
         temp_info.id--;
         temp_info.type--;
         before_pinfo.push_back(temp_info);
+        if (temp_info.type == 1)
+        {
+            temp_lipidinfo.posx = temp_info.posx;
+            temp_lipidinfo.posy = temp_info.posy;
+            temp_lipidinfo.posz = temp_info.posz;
+            lipidinfo1.push_back(temp_lipidinfo);
+        }
+        if (temp_info.type == 4)
+        {
+            temp_lipidinfo.posx = temp_info.posx;
+            temp_lipidinfo.posy = temp_info.posy;
+            temp_lipidinfo.posz = temp_info.posz;
+            lipidinfo2.push_back(temp_lipidinfo);
+        }
     }
     ifs0.close();
     //はじめの文字列を読み込む
@@ -94,6 +131,8 @@ int main(int argc, char *argv[])
            &box_sx, &box_sy, &box_sz, &box_ex, &box_ey, &box_ez, &box_wt);
     //    std::cout <<std::setprecision(10)<< box_sx << " " << box_sy << " " << box_sz << " " << box_ex << " " << box_ey << " " << box_ez << " " << box_wt << std::endl;
     std::sort(before_pinfo.begin(), before_pinfo.end()); //classでオペレータを定義して利用している．
+    std::sort(lipidinfo1.begin(), lipidinfo1.end());     //classでオペレータを定義して利用している．
+    std::sort(lipidinfo2.begin(), lipidinfo2.end());     //classでオペレータを定義して利用している．
     //------------------------------------------------------//
     //
     //
@@ -176,6 +215,92 @@ int main(int argc, char *argv[])
     //------------------------------------------------------//
     //
     //
+    //重心間距離を元に，ベシクル半径を計算し，水粒子にラベル付する．
+    //
+    //
+    //
+    //------------------------------------------------------//
+    //radius of vesicles重心間距離/2-bond長さかける3
+    /*double vesicle_radius = sqrt(pow(center_vesicle1.x - center_vesicle2.x, 2) + pow(center_vesicle1.y - center_vesicle2.y, 2) + pow(center_vesicle1.z - center_vesicle2.z, 2)) / 2 - 0.7 * 3;
+    for (int i = 0; i < before_pinfo.size(); i++)
+    {
+        if (sqrt(pow(center_vesicle1.x - before_pinfo.at(i).posx, 2) + pow(center_vesicle1.y - before_pinfo.at(i).posy, 2) + pow(center_vesicle1.z - before_pinfo.at(i).posz, 2)) < vesicle_radius)
+        {
+            after_pinfo.at(i).type = 5;
+        }
+        if (sqrt(pow(center_vesicle2.x - before_pinfo.at(i).posx, 2) + pow(center_vesicle2.y - before_pinfo.at(i).posy, 2) + pow(center_vesicle2.z - before_pinfo.at(i).posz, 2)) < vesicle_radius)
+        {
+            after_pinfo.at(i).type = 6;
+        }
+    }*/
+    //------------------------------------------------------//
+    //
+    //
+    //重心間距離を元に，ベシクル半径を計算し，水粒子にラベル付する．
+    //脂質との内積を計算し，正確にラベル付する．
+    //
+    //
+    //------------------------------------------------------//
+    //radius of vesicles重心間距離/2
+    double vesicle_radius = sqrt(pow(center_vesicle1.x - center_vesicle2.x, 2) + pow(center_vesicle1.y - center_vesicle2.y, 2) + pow(center_vesicle1.z - center_vesicle2.z, 2)) / 2;
+    //vesicle_radius_short内は水とラベル．それよりも大きく，vesicle_radius_long内は内積で区別．
+    double vesicle_radius_short = vesicle_radius - 0.7 * 9;
+    double vesicle_radius_long = vesicle_radius + 0.7 * 9;
+    for (int i = 0; i < before_pinfo.size(); i++)
+    {
+        if (sqrt(pow(center_vesicle1.x - before_pinfo.at(i).posx, 2) + pow(center_vesicle1.y - before_pinfo.at(i).posy, 2) + pow(center_vesicle1.z - before_pinfo.at(i).posz, 2)) < vesicle_radius_short)
+        {
+            after_pinfo.at(i).type = 5;
+        }
+        else if (sqrt(pow(center_vesicle1.x - before_pinfo.at(i).posx, 2) + pow(center_vesicle1.y - before_pinfo.at(i).posy, 2) + pow(center_vesicle1.z - before_pinfo.at(i).posz, 2)) < vesicle_radius_long)
+        {
+            LipidInfo closelipid;
+            double min_distance = 10000000000000000;
+            double distance;
+            uint32_t min_id;
+            for (int j = 0; j < lipidinfo1.size(); j++)
+            {
+                distance = sqrt(pow(lipidinfo1.at(j).posx - before_pinfo.at(i).posx, 2) + pow(lipidinfo1.at(j).posy - before_pinfo.at(i).posy, 2) + pow(lipidinfo1.at(j).posz - before_pinfo.at(i).posz, 2));
+                if (distance < min_distance)
+                {
+                    min_distance = distance;
+                    min_id = j;
+                }
+            }
+            if ((lipidinfo1.at(min_id).posx - before_pinfo.at(i).posx) * (before_pinfo.at(i).posx - center_vesicle1.x) + (lipidinfo1.at(min_id).posy - before_pinfo.at(i).posy) * (before_pinfo.at(i).posy - center_vesicle1.y) + (lipidinfo1.at(min_id).posz - before_pinfo.at(i).posz) * (before_pinfo.at(i).posz - center_vesicle1.z) > 0)
+            {
+                after_pinfo.at(i).type = 5;
+            }
+        }
+
+        if (sqrt(pow(center_vesicle2.x - before_pinfo.at(i).posx, 2) + pow(center_vesicle2.y - before_pinfo.at(i).posy, 2) + pow(center_vesicle2.z - before_pinfo.at(i).posz, 2)) < vesicle_radius_short)
+        {
+            after_pinfo.at(i).type = 6;
+        }
+        else if (sqrt(pow(center_vesicle2.x - before_pinfo.at(i).posx, 2) + pow(center_vesicle2.y - before_pinfo.at(i).posy, 2) + pow(center_vesicle2.z - before_pinfo.at(i).posz, 2)) < vesicle_radius_long)
+        {
+            LipidInfo closelipid;
+            double min_distance = 10000000000000000;
+            double distance;
+            uint32_t min_id;
+            for (int j = 0; j < lipidinfo1.size(); j++)
+            {
+                distance = sqrt(pow(lipidinfo2.at(j).posx - before_pinfo.at(i).posx, 2) + pow(lipidinfo2.at(j).posy - before_pinfo.at(i).posy, 2) + pow(lipidinfo2.at(j).posz - before_pinfo.at(i).posz, 2));
+                if (distance < min_distance)
+                {
+                    min_distance = distance;
+                    min_id = j;
+                }
+            }
+            if ((lipidinfo2.at(min_id).posx - before_pinfo.at(i).posx) * (before_pinfo.at(i).posx - center_vesicle2.x) + (lipidinfo2.at(min_id).posy - before_pinfo.at(i).posy) * (before_pinfo.at(i).posy - center_vesicle2.y) + (lipidinfo2.at(min_id).posz - before_pinfo.at(i).posz) * (before_pinfo.at(i).posz - center_vesicle2.z) > 0)
+            {
+                after_pinfo.at(i).type = 6;
+            }
+        }
+    }
+    //------------------------------------------------------//
+    //
+    //
     //出力ファイルを生成する．
     //
     //
@@ -196,14 +321,14 @@ int main(int argc, char *argv[])
     {
         fprintf(fpo0, "%s \n", delete_str[i].c_str());
     }
-    for (int i = 0; i < before_pinfo.size(); i++)
+    for (int i = 0; i < after_pinfo.size(); i++)
     {
         fprintf(fpo0, "%d %d   %lf   %lf   %lf \n",
-                before_pinfo.at(i).id + 1,
-                before_pinfo.at(i).type + 1,
-                before_pinfo.at(i).posx,
-                before_pinfo.at(i).posy,
-                before_pinfo.at(i).posz);
+                after_pinfo.at(i).id + 1,
+                after_pinfo.at(i).type + 1,
+                after_pinfo.at(i).posx,
+                after_pinfo.at(i).posy,
+                after_pinfo.at(i).posz);
     }
     fclose(fpo0);
 
